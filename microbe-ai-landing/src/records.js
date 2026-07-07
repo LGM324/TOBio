@@ -26,13 +26,16 @@ export async function getCurrentUser() {
   return normalizeUser(data.session?.user || null);
 }
 
-// 로그인 상태 변화 구독. 즉시 현재 상태도 1회 전달. 해제 함수 반환.
+// 로그인 상태 변화 구독. 즉시 현재 상태도 1회 전달(onAuthStateChange가 구독 직후
+// INITIAL_SESSION 이벤트로 알아서 전달해줌). 해제 함수 반환.
+// ⚠️ 예전엔 getSession()도 별도로 호출해 cb를 두 번 불렀는데, 매번 새 user 객체가
+// 만들어져 이 함수를 쓰는 쪽의 useEffect(dep: [user])가 전부 두 번씩 실행되는
+// 문제(중복 네트워크 요청, 그중 하나가 rate-limit·abort로 실패)가 있어 제거함.
 export function onAuthChange(cb) {
   if (!supabase) {
     cb(null);
     return () => {};
   }
-  supabase.auth.getSession().then(({ data }) => cb(normalizeUser(data.session?.user || null)));
   const { data: sub } = supabase.auth.onAuthStateChange((_event, session) =>
     cb(normalizeUser(session?.user || null))
   );

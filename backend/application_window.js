@@ -85,18 +85,21 @@ function scoreDay(day, inoculantType = "both", th = WINDOW_THRESHOLDS) {
 function bestApplyDay(forecast, safeDate, inoculantType = "both", th = WINDOW_THRESHOLDS) {
   const safeIso = safeDate || isoDate(forecast?.[0]?.date) || "";
 
-  const perDay = (forecast || []).map((d) => {
+  const scored = (forecast || []).map((d) => {
     const s = scoreDay(d, inoculantType, th);
     return { date: isoDate(d.date), level: s.level, ok: s.ok, reasons: s.reasons, timeOfDay: s.timeOfDay };
   });
 
+  // safeDate 이전 날짜는 날씨가 좋아도 농약 안전 간격이 안 끝난 위험 구간이라
+  // "적당함" 등으로 오해될 수 있으니 목록에서 아예 제외한다(안전일 이후만 표시).
+  const afterSafe = scored.filter((d) => d.date >= safeIso);
+
   // safeDate 이상 + ok 인 가장 이른 날
-  const eligible = perDay.filter((d) => d.date >= safeIso && d.ok);
+  const eligible = afterSafe.filter((d) => d.ok);
   const pick = eligible[0] || null;
 
   let reasonNoDay = null;
   if (!pick) {
-    const afterSafe = perDay.filter((d) => d.date >= safeIso);
     reasonNoDay =
       afterSafe.length === 0
         ? "예보 범위(~3일) 안에 살포 안전일 이후 날짜가 없어요. 안전일 이후 날씨를 다시 확인해주세요."
@@ -106,9 +109,9 @@ function bestApplyDay(forecast, safeDate, inoculantType = "both", th = WINDOW_TH
   return {
     recommendDate: pick ? pick.date : null,
     timeOfDay: pick ? pick.timeOfDay || null : null,
-    perDay,
+    perDay: afterSafe,
     safeDate: safeIso,
-    horizonDays: perDay.length,
+    horizonDays: scored.length,
     reason: reasonNoDay,
   };
 }
