@@ -109,22 +109,28 @@ export default function LoginScreen({ onBack, onLogin }) {
     }
     setBusy(true);
     try {
-      let registered = true;
-      try {
-        registered = await checkEmailRegistered(id);
-      } catch {
-        registered = true; // 확인 함수 자체가 실패하면 발송 자체는 막지 않음
-      }
-      if (!registered) {
-        setError("가입되지 않은 이메일입니다. 이메일을 다시 확인해주세요.");
-        return;
-      }
+      // 실제 발송(resetPasswordForEmail)을 가입 여부 확인보다 먼저 호출한다.
+      // 가입 여부 확인(checkEmailRegistered)도 내부적으로 admin.generateLink(recovery)를
+      // 호출하는데, 이게 같은 이메일의 발송 보안 쿨다운(60초)을 그대로 소모시켜서
+      // 순서를 반대로 하면 "완전 첫 요청"인데도 곧바로 이어지는 실제 발송이
+      // "59초 후 다시 시도" 에러로 항상 막히는 문제가 있었다.
       await requestPasswordReset(id);
       setResetCode("");
       setResendCooldown(60); // 재전송은 1분에 한 번만
       setView("forgotCode");
     } catch (e) {
-      setError(authErrorToKorean(e, "reset"));
+      // 발송 자체가 실패했을 때만 가입 여부를 확인해 원인을 더 명확히 안내
+      let registered = true;
+      try {
+        registered = await checkEmailRegistered(id);
+      } catch {
+        registered = true; // 확인 함수 자체가 실패하면 원래 에러를 그대로 보여줌
+      }
+      if (!registered) {
+        setError("가입되지 않은 이메일입니다. 이메일을 다시 확인해주세요.");
+      } else {
+        setError(authErrorToKorean(e, "reset"));
+      }
     } finally {
       setBusy(false);
     }
@@ -407,7 +413,8 @@ function authErrorToKorean(e, mode) {
   if (mode === "reset" && (m.includes("token") || m.includes("otp") || m.includes("expired")))
     return "인증번호가 틀렸습니다. 다시 입력하거나, 안 왔다면 재전송 버튼을 눌러주세요.";
   if (m.includes("password")) return "비밀번호 조건을 확인해주세요(6자 이상).";
-  if (m.includes("rate limit")) return "요청이 많습니다. 잠시 후 다시 시도해주세요.";
+  if (m.includes("rate limit") || m.includes("security purposes") || m.includes("only request this after"))
+    return "보안을 위해 인증번호는 잠시 후에 다시 보낼 수 있어요. 조금 있다가 다시 시도해주세요.";
   if (mode === "reset") return "비밀번호 찾기 중 오류가 발생했습니다: " + (e?.message || "알 수 없음");
   return (mode === "signup" ? "회원가입" : "로그인") + " 중 오류가 발생했습니다: " + (e?.message || "알 수 없음");
 }
